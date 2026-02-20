@@ -112,7 +112,7 @@ pub extern "C" fn wasmtime_global_type(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn wasmtime_global_get(
-    mut store: WasmtimeStoreContextMut<'_>,
+    store: WasmtimeStoreContextMut<'_>,
     global: &Global,
     val: &mut MaybeUninit<wasmtime_val_t>,
 ) {
@@ -124,6 +124,7 @@ pub extern "C" fn wasmtime_global_get(
     }
     #[cfg(not(feature = "gc"))]
     {
+        let mut store = store;
         let gval = global.get(&mut store);
         crate::initialize(val, wasmtime_val_t::from_val_unscoped(&mut store, gval))
     }

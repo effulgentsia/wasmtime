@@ -150,7 +150,7 @@ pub unsafe extern "C" fn wasmtime_table_type(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn wasmtime_table_get(
-    mut store: WasmtimeStoreContextMut<'_>,
+    store: WasmtimeStoreContextMut<'_>,
     table: &Table,
     index: u64,
     ret: &mut MaybeUninit<wasmtime_val_t>,
@@ -168,6 +168,7 @@ pub extern "C" fn wasmtime_table_get(
     }
     #[cfg(not(feature = "gc"))]
     {
+        let mut store = store;
         match table.get(&mut store, index) {
             Some(r) => {
                 crate::initialize(ret, wasmtime_val_t::from_val_unscoped(&mut store, r.into()));
