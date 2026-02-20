@@ -190,6 +190,23 @@ WASMTIME_CONFIG_PROP(void, wasm_function_references, bool)
 WASMTIME_CONFIG_PROP(void, wasm_gc, bool)
 
 /**
+ * \brief Enables or disables GC support in Wasmtime entirely.
+ *
+ * When enabled, Wasmtime initializes GC infrastructure required by the
+ * reference types, function references, GC, and exception handling proposals.
+ * This requires a GC collector to be compiled in (e.g. the `gc-drc` or
+ * `gc-null` features).
+ *
+ * When disabled, none of those proposals can be used, but Wasmtime can run
+ * without any GC collector compiled in, which is the typical configuration for
+ * the minimal (headless) build.
+ *
+ * This setting defaults to whether the `gc` feature was enabled at compile
+ * time.
+ */
+WASMTIME_CONFIG_PROP(void, gc_support, bool)
+
+/**
  * \brief Configures whether the WebAssembly SIMD proposal is
  * enabled.
  *
