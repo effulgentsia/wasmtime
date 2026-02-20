@@ -197,6 +197,7 @@ pub extern "C" fn wasm_foreign_new(_store: &crate::wasm_store_t) -> Box<wasm_for
 /// a 64-bit store_id first.
 macro_rules! ref_wrapper {
     ($wasmtime:ident => $c:ident) => {
+        #[cfg_attr(not(feature = "gc"), allow(dead_code))]
         pub struct $c {
             store_id: u64,
             a: u32,
