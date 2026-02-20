@@ -228,7 +228,15 @@ pub extern "C" fn wasmtime_context_set_wasi(
 pub extern "C" fn wasmtime_context_gc(
     mut context: WasmtimeStoreContextMut<'_>,
 ) -> Option<Box<wasmtime_error_t>> {
-    crate::handle_result(context.gc(None), |()| {})
+    #[cfg(feature = "gc")]
+    {
+        crate::handle_result(context.gc(None), |()| {})
+    }
+    #[cfg(not(feature = "gc"))]
+    {
+        let _ = context;
+        None
+    }
 }
 
 #[unsafe(no_mangle)]

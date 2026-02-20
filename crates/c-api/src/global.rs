@@ -3,7 +3,9 @@ use crate::{
     wasm_store_t, wasm_val_t, wasmtime_error_t, wasmtime_val_t,
 };
 use std::mem::MaybeUninit;
-use wasmtime::{Extern, Global, RootScope};
+#[cfg(feature = "gc")]
+use wasmtime::RootScope;
+use wasmtime::{Extern, Global};
 
 #[derive(Clone)]
 #[repr(transparent)]
@@ -84,9 +86,17 @@ pub unsafe extern "C" fn wasmtime_global_new(
     val: &wasmtime_val_t,
     ret: &mut Global,
 ) -> Option<Box<wasmtime_error_t>> {
-    let mut scope = RootScope::new(&mut store);
-    let val = val.to_val(&mut scope);
-    let global = Global::new(scope, gt.ty().ty.clone(), val);
+    #[cfg(feature = "gc")]
+    let global = {
+        let mut scope = RootScope::new(&mut store);
+        let val = val.to_val(&mut scope);
+        Global::new(scope, gt.ty().ty.clone(), val)
+    };
+    #[cfg(not(feature = "gc"))]
+    let global = {
+        let val = val.to_val_unscoped(&mut store);
+        Global::new(&mut store, gt.ty().ty.clone(), val)
+    };
     handle_result(global, |global| {
         *ret = global;
     })
@@ -102,13 +112,21 @@ pub extern "C" fn wasmtime_global_type(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn wasmtime_global_get(
-    store: WasmtimeStoreContextMut<'_>,
+    mut store: WasmtimeStoreContextMut<'_>,
     global: &Global,
     val: &mut MaybeUninit<wasmtime_val_t>,
 ) {
-    let mut scope = RootScope::new(store);
-    let gval = global.get(&mut scope);
-    crate::initialize(val, wasmtime_val_t::from_val(&mut scope, gval))
+    #[cfg(feature = "gc")]
+    {
+        let mut scope = RootScope::new(store);
+        let gval = global.get(&mut scope);
+        crate::initialize(val, wasmtime_val_t::from_val(&mut scope, gval))
+    }
+    #[cfg(not(feature = "gc"))]
+    {
+        let gval = global.get(&mut store);
+        crate::initialize(val, wasmtime_val_t::from_val_unscoped(&mut store, gval))
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -117,7 +135,16 @@ pub unsafe extern "C" fn wasmtime_global_set(
     global: &Global,
     val: &wasmtime_val_t,
 ) -> Option<Box<wasmtime_error_t>> {
-    let mut scope = RootScope::new(&mut store);
-    let val = val.to_val(&mut scope);
-    handle_result(global.set(scope, val), |()| {})
+    #[cfg(feature = "gc")]
+    let result = {
+        let mut scope = RootScope::new(&mut store);
+        let val = val.to_val(&mut scope);
+        global.set(scope, val)
+    };
+    #[cfg(not(feature = "gc"))]
+    let result = {
+        let val = val.to_val_unscoped(&mut store);
+        global.set(&mut store, val)
+    };
+    handle_result(result, |()| {})
 }

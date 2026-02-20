@@ -3,7 +3,9 @@ use crate::{
     wasm_store_t, wasm_tabletype_t, wasmtime_error_t, wasmtime_val_t,
 };
 use std::mem::MaybeUninit;
-use wasmtime::{Extern, Ref, RootScope, Table, TableType, format_err};
+#[cfg(feature = "gc")]
+use wasmtime::RootScope;
+use wasmtime::{Extern, Ref, Table, TableType, format_err};
 
 #[derive(Clone)]
 #[repr(transparent)]
@@ -120,14 +122,22 @@ pub unsafe extern "C" fn wasmtime_table_new(
     init: &wasmtime_val_t,
     out: &mut Table,
 ) -> Option<Box<wasmtime_error_t>> {
-    let mut scope = RootScope::new(&mut store);
-    handle_result(
+    #[cfg(feature = "gc")]
+    let result = {
+        let mut scope = RootScope::new(&mut store);
         init.to_val(&mut scope)
             .ref_()
             .ok_or_else(|| format_err!("wasmtime_table_new init value is not a reference"))
-            .and_then(|init| Table::new(scope, tt.ty().ty.clone(), init)),
-        |table| *out = table,
-    )
+            .and_then(|init| Table::new(scope, tt.ty().ty.clone(), init))
+    };
+    #[cfg(not(feature = "gc"))]
+    let result = {
+        init.to_val_unscoped(&mut store)
+            .ref_()
+            .ok_or_else(|| format_err!("wasmtime_table_new init value is not a reference"))
+            .and_then(|init| Table::new(&mut store, tt.ty().ty.clone(), init))
+    };
+    handle_result(result, |table| *out = table)
 }
 
 #[unsafe(no_mangle)]
@@ -140,18 +150,31 @@ pub unsafe extern "C" fn wasmtime_table_type(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn wasmtime_table_get(
-    store: WasmtimeStoreContextMut<'_>,
+    mut store: WasmtimeStoreContextMut<'_>,
     table: &Table,
     index: u64,
     ret: &mut MaybeUninit<wasmtime_val_t>,
 ) -> bool {
-    let mut scope = RootScope::new(store);
-    match table.get(&mut scope, index) {
-        Some(r) => {
-            crate::initialize(ret, wasmtime_val_t::from_val(&mut scope, r.into()));
-            true
+    #[cfg(feature = "gc")]
+    {
+        let mut scope = RootScope::new(store);
+        match table.get(&mut scope, index) {
+            Some(r) => {
+                crate::initialize(ret, wasmtime_val_t::from_val(&mut scope, r.into()));
+                true
+            }
+            None => false,
         }
-        None => false,
+    }
+    #[cfg(not(feature = "gc"))]
+    {
+        match table.get(&mut store, index) {
+            Some(r) => {
+                crate::initialize(ret, wasmtime_val_t::from_val_unscoped(&mut store, r.into()));
+                true
+            }
+            None => false,
+        }
     }
 }
 
@@ -162,14 +185,22 @@ pub unsafe extern "C" fn wasmtime_table_set(
     index: u64,
     val: &wasmtime_val_t,
 ) -> Option<Box<wasmtime_error_t>> {
-    let mut scope = RootScope::new(&mut store);
-    handle_result(
+    #[cfg(feature = "gc")]
+    let result = {
+        let mut scope = RootScope::new(&mut store);
         val.to_val(&mut scope)
             .ref_()
             .ok_or_else(|| format_err!("wasmtime_table_set value is not a reference"))
-            .and_then(|val| table.set(scope, index, val)),
-        |()| {},
-    )
+            .and_then(|val| table.set(scope, index, val))
+    };
+    #[cfg(not(feature = "gc"))]
+    let result = {
+        val.to_val_unscoped(&mut store)
+            .ref_()
+            .ok_or_else(|| format_err!("wasmtime_table_set value is not a reference"))
+            .and_then(|val| table.set(&mut store, index, val))
+    };
+    handle_result(result, |()| {})
 }
 
 #[unsafe(no_mangle)]
@@ -185,12 +216,20 @@ pub unsafe extern "C" fn wasmtime_table_grow(
     val: &wasmtime_val_t,
     prev_size: &mut u64,
 ) -> Option<Box<wasmtime_error_t>> {
-    let mut scope = RootScope::new(&mut store);
-    handle_result(
+    #[cfg(feature = "gc")]
+    let result = {
+        let mut scope = RootScope::new(&mut store);
         val.to_val(&mut scope)
             .ref_()
             .ok_or_else(|| format_err!("wasmtime_table_grow value is not a reference"))
-            .and_then(|val| table.grow(scope, delta, val)),
-        |prev| *prev_size = prev,
-    )
+            .and_then(|val| table.grow(scope, delta, val))
+    };
+    #[cfg(not(feature = "gc"))]
+    let result = {
+        val.to_val_unscoped(&mut store)
+            .ref_()
+            .ok_or_else(|| format_err!("wasmtime_table_grow value is not a reference"))
+            .and_then(|val| table.grow(&mut store, delta, val))
+    };
+    handle_result(result, |prev| *prev_size = prev)
 }
