@@ -3,7 +3,10 @@ use crate::{
     wasm_store_t, wasm_tabletype_t, wasmtime_error_t, wasmtime_val_t,
 };
 use std::mem::MaybeUninit;
-use wasmtime::{Extern, Ref, RootScope, Table, TableType, format_err};
+use wasmtime::{Extern, Ref, Table, TableType, format_err};
+
+#[cfg(feature = "gc")]
+use wasmtime::RootScope;
 
 #[derive(Clone)]
 #[repr(transparent)]
@@ -114,13 +117,18 @@ pub extern "C" fn wasm_table_as_extern_const(t: &wasm_table_t) -> &wasm_extern_t
 }
 
 #[unsafe(no_mangle)]
+#[allow(unused_mut)]
 pub unsafe extern "C" fn wasmtime_table_new(
     mut store: WasmtimeStoreContextMut<'_>,
     tt: &wasm_tabletype_t,
     init: &wasmtime_val_t,
     out: &mut Table,
 ) -> Option<Box<wasmtime_error_t>> {
+    #[cfg(feature = "gc")]
     let mut scope = RootScope::new(&mut store);
+    #[cfg(not(feature = "gc"))]
+    let mut scope = store;
+
     handle_result(
         init.to_val(&mut scope)
             .ref_()
@@ -145,7 +153,11 @@ pub extern "C" fn wasmtime_table_get(
     index: u64,
     ret: &mut MaybeUninit<wasmtime_val_t>,
 ) -> bool {
+    #[cfg(feature = "gc")]
     let mut scope = RootScope::new(store);
+    #[cfg(not(feature = "gc"))]
+    let mut scope = store;
+
     match table.get(&mut scope, index) {
         Some(r) => {
             crate::initialize(ret, wasmtime_val_t::from_val(&mut scope, r.into()));
@@ -156,13 +168,18 @@ pub extern "C" fn wasmtime_table_get(
 }
 
 #[unsafe(no_mangle)]
+#[allow(unused_mut)]
 pub unsafe extern "C" fn wasmtime_table_set(
     mut store: WasmtimeStoreContextMut<'_>,
     table: &Table,
     index: u64,
     val: &wasmtime_val_t,
 ) -> Option<Box<wasmtime_error_t>> {
+    #[cfg(feature = "gc")]
     let mut scope = RootScope::new(&mut store);
+    #[cfg(not(feature = "gc"))]
+    let mut scope = store;
+
     handle_result(
         val.to_val(&mut scope)
             .ref_()
@@ -178,6 +195,7 @@ pub extern "C" fn wasmtime_table_size(store: WasmtimeStoreContext<'_>, table: &T
 }
 
 #[unsafe(no_mangle)]
+#[allow(unused_mut)]
 pub unsafe extern "C" fn wasmtime_table_grow(
     mut store: WasmtimeStoreContextMut<'_>,
     table: &Table,
@@ -185,7 +203,11 @@ pub unsafe extern "C" fn wasmtime_table_grow(
     val: &wasmtime_val_t,
     prev_size: &mut u64,
 ) -> Option<Box<wasmtime_error_t>> {
+    #[cfg(feature = "gc")]
     let mut scope = RootScope::new(&mut store);
+    #[cfg(not(feature = "gc"))]
+    let mut scope = store;
+
     handle_result(
         val.to_val(&mut scope)
             .ref_()

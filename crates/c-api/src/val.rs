@@ -5,7 +5,10 @@ use crate::{
 };
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ptr;
-use wasmtime::{AsContextMut, Func, HeapType, Ref, RootScope, Val, ValType};
+use wasmtime::{AsContextMut, Func, HeapType, Ref, Val, ValType};
+
+#[cfg(feature = "gc")]
+use wasmtime::RootScope;
 
 #[repr(C)]
 pub struct wasm_val_t {
@@ -217,11 +220,17 @@ impl From<Option<Func>> for wasmtime_func_t {
 impl wasmtime_val_t {
     /// Creates a new `wasmtime_val_t` from a `wasmtime::Val`.
     ///
-    /// Note that this requires a `RootScope` to be present to serve as proof
-    /// that `val` is not require to be rooted in the store itself which would
-    /// prevent GC. Callers should prefer this API where possible, creating a
-    /// temporary `RootScope` when needed.
+    /// Note that when the `gc` feature is enabled, this requires a `RootScope`
+    /// to be present to serve as proof that `val` is not required to be rooted
+    /// in the store itself which would prevent GC. Callers should prefer this
+    /// API where possible, creating a temporary `RootScope` when needed.
+    #[cfg(feature = "gc")]
     pub fn from_val(cx: &mut RootScope<impl AsContextMut>, val: Val) -> wasmtime_val_t {
+        Self::from_val_unscoped(cx, val)
+    }
+
+    #[cfg(not(feature = "gc"))]
+    pub fn from_val(cx: &mut impl AsContextMut, val: Val) -> wasmtime_val_t {
         Self::from_val_unscoped(cx, val)
     }
 
@@ -286,7 +295,13 @@ impl wasmtime_val_t {
     /// API as the `Val` returned may contain a `Rooted<T>` which requires a
     /// `RootScope` if we don't want the value to live for the entire lifetime
     /// of the `Store`.
+    #[cfg(feature = "gc")]
     pub unsafe fn to_val(&self, cx: &mut RootScope<impl AsContextMut>) -> Val {
+        self.to_val_unscoped(cx)
+    }
+
+    #[cfg(not(feature = "gc"))]
+    pub unsafe fn to_val(&self, cx: &mut impl AsContextMut) -> Val {
         self.to_val_unscoped(cx)
     }
 

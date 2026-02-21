@@ -11,9 +11,12 @@ use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
 use std::str;
 use wasmtime::{
-    AsContext, AsContextMut, Error, Extern, Func, Result, RootScope, StoreContext, StoreContextMut,
-    Trap, Val, ValRaw,
+    AsContext, AsContextMut, Error, Extern, Func, Result, StoreContext, StoreContextMut, Trap, Val,
+    ValRaw,
 };
+
+#[cfg(feature = "gc")]
+use wasmtime::RootScope;
 
 #[derive(Clone)]
 #[repr(transparent)]
@@ -342,6 +345,7 @@ pub(crate) unsafe fn c_unchecked_callback_to_rust_fn(
 }
 
 #[unsafe(no_mangle)]
+#[allow(unused_mut)]
 pub unsafe extern "C" fn wasmtime_func_call(
     mut store: WasmtimeStoreContextMut<'_>,
     func: &Func,
@@ -351,7 +355,11 @@ pub unsafe extern "C" fn wasmtime_func_call(
     nresults: usize,
     trap_ret: &mut *mut wasm_trap_t,
 ) -> Option<Box<wasmtime_error_t>> {
+    #[cfg(feature = "gc")]
     let mut scope = RootScope::new(&mut store);
+    #[cfg(not(feature = "gc"))]
+    let mut scope = store;
+
     let mut params = mem::take(&mut scope.as_context_mut().data_mut().wasm_val_storage);
     let (wt_params, wt_results) = translate_args(
         &mut params,
