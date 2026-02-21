@@ -135,6 +135,8 @@ wasmtime_context_get_data(const wasmtime_context_t *context);
 WASM_API_EXTERN void wasmtime_context_set_data(wasmtime_context_t *context,
                                                void *data);
 
+#ifdef WASMTIME_FEATURE_GC
+
 /**
  * \brief Perform garbage collection within the given context.
  *
@@ -146,6 +148,8 @@ WASM_API_EXTERN void wasmtime_context_set_data(wasmtime_context_t *context,
  */
 WASM_API_EXTERN wasmtime_error_t *
 wasmtime_context_gc(wasmtime_context_t *context);
+
+#endif // WASMTIME_FEATURE_GC
 
 /**
  * \brief Set fuel to this context's store for wasm to consume while executing.

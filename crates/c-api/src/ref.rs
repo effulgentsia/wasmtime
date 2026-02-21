@@ -1,7 +1,17 @@
-use crate::{WasmtimeStoreContextMut, abort};
+use crate::abort;
+use std::os::raw::c_void;
+use wasmtime::{AnyRef, ExternRef, OwnedRooted, Ref, Val};
+
+#[cfg(feature = "gc")]
+use crate::WasmtimeStoreContextMut;
+#[cfg(feature = "gc")]
 use std::mem::{ManuallyDrop, MaybeUninit};
-use std::{num::NonZeroU64, os::raw::c_void, ptr};
-use wasmtime::{AnyRef, ExternRef, I31, OwnedRooted, Ref, RootScope, Val};
+#[cfg(feature = "gc")]
+use std::num::NonZeroU64;
+#[cfg(feature = "gc")]
+use std::ptr;
+#[cfg(feature = "gc")]
+use wasmtime::{I31, RootScope};
 
 /// `*mut wasm_ref_t` is a reference type (`externref` or `funcref`), as seen by
 /// the C API. Because we do not have a uniform representation for `funcref`s
@@ -191,6 +201,7 @@ pub extern "C" fn wasm_foreign_new(_store: &crate::wasm_store_t) -> Box<wasm_for
 ///
 /// Note that this relies on the Wasmtime definition of `OwnedRooted` to have
 /// a 64-bit store_id first.
+#[cfg(feature = "gc")]
 macro_rules! ref_wrapper {
     ($wasmtime:ident => $c:ident) => {
         pub struct $c {
@@ -256,9 +267,52 @@ macro_rules! ref_wrapper {
     };
 }
 
+#[cfg(not(feature = "gc"))]
+macro_rules! ref_wrapper {
+    ($wasmtime:ident => $c:ident) => {
+        #[allow(dead_code)]
+        pub struct $c {
+            store_id: u64,
+            a: u32,
+            b: u32,
+            c: *const (),
+        }
+
+        impl $c {
+            pub unsafe fn as_wasmtime(&self) -> Option<OwnedRooted<$wasmtime>> {
+                None
+            }
+
+            pub unsafe fn into_wasmtime(self) -> Option<OwnedRooted<$wasmtime>> {
+                None
+            }
+        }
+
+        impl Drop for $c {
+            fn drop(&mut self) {}
+        }
+
+        impl From<Option<OwnedRooted<$wasmtime>>> for $c {
+            fn from(rooted: Option<OwnedRooted<$wasmtime>>) -> $c {
+                drop(rooted);
+                $c {
+                    store_id: 0,
+                    a: 0,
+                    b: 0,
+                    c: core::ptr::null(),
+                }
+            }
+        }
+
+        unsafe impl Send for $c {}
+        unsafe impl Sync for $c {}
+    };
+}
+
 ref_wrapper!(AnyRef => wasmtime_anyref_t);
 ref_wrapper!(ExternRef => wasmtime_externref_t);
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_anyref_clone(
     anyref: Option<&wasmtime_anyref_t>,
@@ -268,6 +322,7 @@ pub unsafe extern "C" fn wasmtime_anyref_clone(
     crate::initialize(out, anyref.into());
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_anyref_unroot(val: Option<&mut ManuallyDrop<wasmtime_anyref_t>>) {
     if let Some(val) = val {
@@ -277,6 +332,7 @@ pub unsafe extern "C" fn wasmtime_anyref_unroot(val: Option<&mut ManuallyDrop<wa
     }
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_anyref_to_raw(
     cx: WasmtimeStoreContextMut<'_>,
@@ -287,6 +343,7 @@ pub unsafe extern "C" fn wasmtime_anyref_to_raw(
         .unwrap_or_default()
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_anyref_from_raw(
     cx: WasmtimeStoreContextMut<'_>,
@@ -299,6 +356,7 @@ pub unsafe extern "C" fn wasmtime_anyref_from_raw(
     crate::initialize(val, anyref.into());
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub extern "C" fn wasmtime_anyref_from_i31(
     cx: WasmtimeStoreContextMut<'_>,
@@ -311,6 +369,7 @@ pub extern "C" fn wasmtime_anyref_from_i31(
     crate::initialize(out, Some(anyref).into())
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_anyref_i31_get_u(
     cx: WasmtimeStoreContextMut<'_>,
@@ -330,6 +389,7 @@ pub unsafe extern "C" fn wasmtime_anyref_i31_get_u(
     }
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_anyref_i31_get_s(
     cx: WasmtimeStoreContextMut<'_>,
@@ -349,6 +409,7 @@ pub unsafe extern "C" fn wasmtime_anyref_i31_get_s(
     }
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub extern "C" fn wasmtime_externref_new(
     cx: WasmtimeStoreContextMut<'_>,
@@ -366,6 +427,7 @@ pub extern "C" fn wasmtime_externref_new(
     true
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_externref_data(
     cx: WasmtimeStoreContextMut<'_>,
@@ -380,6 +442,7 @@ pub unsafe extern "C" fn wasmtime_externref_data(
         .unwrap_or(ptr::null_mut())
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_externref_clone(
     externref: Option<&wasmtime_externref_t>,
@@ -389,6 +452,7 @@ pub unsafe extern "C" fn wasmtime_externref_clone(
     crate::initialize(out, externref.into());
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_externref_unroot(
     val: Option<&mut ManuallyDrop<wasmtime_externref_t>>,
@@ -400,6 +464,7 @@ pub unsafe extern "C" fn wasmtime_externref_unroot(
     }
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_externref_to_raw(
     cx: WasmtimeStoreContextMut<'_>,
@@ -410,6 +475,7 @@ pub unsafe extern "C" fn wasmtime_externref_to_raw(
         .unwrap_or_default()
 }
 
+#[cfg(feature = "gc")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wasmtime_externref_from_raw(
     cx: WasmtimeStoreContextMut<'_>,
